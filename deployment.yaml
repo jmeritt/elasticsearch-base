@@ -1,0 +1,117 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  labels:
+    app: elasticsearch
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      initContainers:
+      - name: init-priveleges-data
+        image: busybox
+        command:
+        - chown
+        - -R
+        - 3333:3333
+        - /data
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      - name: init-priveleges-config
+        image: busybox
+        command:
+        - chown
+        - -R
+        - 3333:3333
+        - /config
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      - name: init-priveleges-logs
+        image: busybox
+        command:
+        - chown
+        - -R
+        - 3333:3333
+        - /logs
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: logs
+          mountPath: /logs
+      - name: copy-config
+        image: busybox
+        command: ['sh', '-c', 'cp /config-src/* /config/']
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: config-src
+          mountPath: /config-src
+      - name: init-sysctl
+        image: busybox:1.27.2
+        command:
+        - sysctl
+        - -w
+        - vm.max_map_count=262144
+        securityContext:
+          privileged: true
+      containers:
+      - name: elasticsearch
+        image: jmeritt/elasticsearch
+        ports:
+        - containerPort: 9300
+          name: transport
+        - containerPort: 9200
+          name: http
+        # livenessProbe:
+        #   tcpSocket:
+        #     port: transport
+        #   initialDelaySeconds: 20
+        #   periodSeconds: 10
+        # readinessProbe:
+        #   httpGet:
+        #     path: /_cluster/health
+        #     port: http
+        #   initialDelaySeconds: 20
+        #   timeoutSeconds: 5
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: data
+          mountPath: /data
+        - name: logs
+          mountPath: /logs
+      volumes:
+      - name: config-src
+        configMap:
+          name: es-config
+      - name: data
+        emptyDir:
+      - name: config
+        emptyDir:
+      - name: logs
+        emptyDir:
+  # volumeClaimTemplates:
+  # - metadata:
+  #     name: storage
+  #   spec:
+  #     storageClassName: standard
+  #     accessModes: [ ReadWriteOnce ]
+  #     resources:
+  #       requests:
+  #         storage: 2Gi
